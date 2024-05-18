@@ -45,7 +45,7 @@ type Task struct {
 	ErrCh    chan error
 }
 
-func NewTraceProcessor(pattern TracePattern) *TraceProcessor {
+func NewTraceProcessor(pattern Pattern) *TraceProcessor {
 	return &TraceProcessor{
 		SpanName: BasicSpanName,
 		Pattern:  pattern,
@@ -56,14 +56,21 @@ func NewTraceProcessor(pattern TracePattern) *TraceProcessor {
 type TraceProcessor struct {
 	Instrumenter     Instrumenter
 	FunctionSelector FunctionSelector
-	SpanName         func(receiver, function string) string
-	Pattern          TracePattern
+	SpanName         SpanFunc
+	Pattern          Pattern
 }
 
 func (p *TraceProcessor) Process(fileName string, config ...any) error {
-	conf, ok := config[0].(TraceConfig)
-	if !ok {
-		return ErrInvalidConfigType
+	var (
+		conf TraceConfig = DefaultTraceConfig
+		ok   bool
+	)
+
+	if len(config) != 0 {
+		conf, ok = config[0].(TraceConfig)
+		if !ok {
+			return ErrInvalidConfigType
+		}
 	}
 
 	if fileName == "" {
@@ -155,8 +162,11 @@ func (p *TraceProcessor) process(fset *token.FileSet, file *ast.File) error {
 			return true
 		}
 
-		if functionHasContext(fnType, p.Pattern.ContextName, p.Pattern.ContextPackage, p.Pattern.ContextType) {
-			ps := p.Instrumenter.PrefixStatements(p.SpanName(receiver, fname), functionHasError(fnType, p.Pattern.ErrorName, p.Pattern.ErrorType))
+		if p.Pattern.Match(fnType, TracePatternContext) {
+			ps := p.Instrumenter.PrefixStatements(
+				p.SpanName(receiver, fname),
+				p.Pattern.Match(fnType, TracePatternError),
+			)
 			patches = append(patches, patch{pos: fnBody.Pos(), stmts: ps})
 		}
 
@@ -175,20 +185,27 @@ func (p *TraceProcessor) process(fset *token.FileSet, file *ast.File) error {
 	return nil
 }
 
-func NewSerialTraceProcessor(pattern TracePattern) *SerialTraceProcessor {
+func NewSerialTraceProcessor(pattern Pattern) *SerialTraceProcessor {
 	return &SerialTraceProcessor{
 		Pattern: pattern,
 	}
 }
 
 type SerialTraceProcessor struct {
-	Pattern TracePattern
+	Pattern Pattern
 }
 
 func (p *SerialTraceProcessor) Process(fileNames []string, config ...any) error {
-	conf, ok := config[0].(TraceConfig)
-	if !ok {
-		return ErrInvalidConfigType
+	var (
+		conf TraceConfig = DefaultTraceConfig
+		ok   bool
+	)
+
+	if len(config) != 0 {
+		conf, ok = config[0].(TraceConfig)
+		if !ok {
+			return ErrInvalidConfigType
+		}
 	}
 
 	fp := NewTraceProcessor(p.Pattern)
@@ -201,7 +218,7 @@ func (p *SerialTraceProcessor) Process(fileNames []string, config ...any) error 
 	return nil
 }
 
-func NewParallelTraceProcessor(worker int, pattern TracePattern) *ParallelTraceProcessor {
+func NewParallelTraceProcessor(worker int, pattern Pattern) *ParallelTraceProcessor {
 	taskCh := make(chan Task)
 	doneCh := make(chan bool)
 
@@ -228,15 +245,22 @@ func NewParallelTraceProcessor(worker int, pattern TracePattern) *ParallelTraceP
 
 type ParallelTraceProcessor struct {
 	Worker  int
-	Pattern TracePattern
+	Pattern Pattern
 	TaskCh  chan Task
 	DoneCh  chan bool
 }
 
 func (p *ParallelTraceProcessor) Process(fileNames []string, config ...any) error {
-	conf, ok := config[0].(TraceConfig)
-	if !ok {
-		return ErrInvalidConfigType
+	var (
+		conf TraceConfig = DefaultTraceConfig
+		ok   bool
+	)
+
+	if len(config) != 0 {
+		conf, ok = config[0].(TraceConfig)
+		if !ok {
+			return ErrInvalidConfigType
+		}
 	}
 
 	run := func() error {

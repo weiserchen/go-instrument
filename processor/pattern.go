@@ -2,12 +2,60 @@ package processor
 
 import "go/ast"
 
+type TracePatternType int
+
+const (
+	TracePatternContext TracePatternType = iota
+	TracePatternError
+)
+
+type SpanFunc func(receiver, function string) string
+
+type Pattern interface {
+	Match(args ...any) bool
+}
+
+var (
+	DefaultTracePattern *TracePattern = &TracePattern{
+		ContextName:    "ctx",
+		ContextPackage: "context",
+		ContextType:    "Context",
+		ErrorName:      "err",
+		ErrorType:      "error",
+	}
+)
+
 type TracePattern struct {
 	ContextName    string
 	ContextPackage string
 	ContextType    string
 	ErrorName      string
 	ErrorType      string
+}
+
+func (p *TracePattern) Match(args ...any) bool {
+	if len(args) == 0 {
+		return false
+	}
+
+	fnType, ok := args[0].(*ast.FuncType)
+	if !ok {
+		return false
+	}
+
+	patternType, ok := args[1].(TracePatternType)
+	if !ok {
+		return false
+	}
+
+	switch patternType {
+	case TracePatternContext:
+		return functionHasContext(fnType, p.ContextName, p.ContextPackage, p.ContextType)
+	case TracePatternError:
+		return functionHasError(fnType, p.ErrorName, p.ErrorType)
+	default:
+		return false
+	}
 }
 
 // BasicSpanName is common notation of <class>.<method> or <pkg>.<func>

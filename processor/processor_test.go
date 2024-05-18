@@ -13,7 +13,7 @@ import (
 const (
 	BenchSerailCount    = 1
 	BenchParallelCount  = 10000
-	BenchParallelWorker = 32
+	BenchParallelWorker = 16
 )
 
 func BenchmarkTraceProcessor(b *testing.B) {
@@ -31,17 +31,12 @@ func BenchmarkTraceProcessor(b *testing.B) {
 	}()
 
 	b.ResetTimer()
-	tracePattern := TracePattern{
-		ContextName:    "ctx",
-		ContextPackage: "context",
-		ContextType:    "Context",
-		ErrorName:      "err",
-		ErrorType:      "error",
-	}
+	tracePattern := DefaultTracePattern
+	traceConfig := DefaultTraceConfig
 	p := NewTraceProcessor(tracePattern)
 	for i := 0; i < b.N; i++ {
 		for _, fname := range filenames {
-			err := p.Process(fname, "test", false, true, false)
+			err := p.Process(fname, traceConfig)
 			if err != nil {
 				b.Error(err)
 			}
@@ -64,16 +59,11 @@ func BenchmarkSerialProcessor(b *testing.B) {
 	}()
 
 	b.ResetTimer()
-	tracePattern := TracePattern{
-		ContextName:    "ctx",
-		ContextPackage: "context",
-		ContextType:    "Context",
-		ErrorName:      "err",
-		ErrorType:      "error",
-	}
+	tracePattern := DefaultTracePattern
+	traceConfig := DefaultTraceConfig
 	p := NewSerialTraceProcessor(tracePattern)
 	for i := 0; i < b.N; i++ {
-		err := p.Process(filenames, "test", false, true, false)
+		err := p.Process(filenames, traceConfig)
 		if err != nil {
 			b.Error(err)
 		}
@@ -95,16 +85,11 @@ func BenchmarkParallelProcessor(b *testing.B) {
 	}()
 
 	b.ResetTimer()
-	tracePattern := TracePattern{
-		ContextName:    "ctx",
-		ContextPackage: "context",
-		ContextType:    "Context",
-		ErrorName:      "err",
-		ErrorType:      "error",
-	}
+	tracePattern := DefaultTracePattern
+	traceConfig := DefaultTraceConfig
 	p := NewParallelTraceProcessor(BenchParallelWorker, tracePattern)
 	for i := 0; i < b.N; i++ {
-		err := p.Process(filenames, "test", false, true, false)
+		err := p.Process(filenames, traceConfig)
 		if err != nil {
 			b.Error(err)
 		}

@@ -22,7 +22,7 @@ func main() {
 	flag.BoolVar(&skipGenerated, "skip-generated", false, "skip generated files")
 	flag.Parse()
 
-	pattern := processor.TracePattern{
+	pattern := &processor.TracePattern{
 		ContextName:    "ctx",
 		ContextPackage: "context",
 		ContextType:    "Context",
