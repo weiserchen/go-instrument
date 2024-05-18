@@ -45,14 +45,10 @@ type Task struct {
 	ErrCh    chan error
 }
 
-func NewTraceProcessor(contextName, contextPackage, contextType, errorName, errorType string) *TraceProcessor {
+func NewTraceProcessor(pattern TracePattern) *TraceProcessor {
 	return &TraceProcessor{
-		SpanName:       BasicSpanName,
-		ContextName:    contextName,
-		ContextPackage: contextPackage,
-		ContextType:    contextType,
-		ErrorName:      errorName,
-		ErrorType:      errorType,
+		SpanName: BasicSpanName,
+		Pattern:  pattern,
 	}
 }
 
@@ -61,11 +57,7 @@ type TraceProcessor struct {
 	Instrumenter     Instrumenter
 	FunctionSelector FunctionSelector
 	SpanName         func(receiver, function string) string
-	ContextName      string
-	ContextPackage   string
-	ContextType      string
-	ErrorName        string
-	ErrorType        string
+	Pattern          TracePattern
 }
 
 func (p *TraceProcessor) Process(fileName string, config ...any) error {
@@ -163,8 +155,8 @@ func (p *TraceProcessor) process(fset *token.FileSet, file *ast.File) error {
 			return true
 		}
 
-		if functionHasContext(fnType, p.ContextName, p.ContextPackage, p.ContextType) {
-			ps := p.Instrumenter.PrefixStatements(p.SpanName(receiver, fname), functionHasError(fnType, p.ErrorName, p.ErrorType))
+		if functionHasContext(fnType, p.Pattern.ContextName, p.Pattern.ContextPackage, p.Pattern.ContextType) {
+			ps := p.Instrumenter.PrefixStatements(p.SpanName(receiver, fname), functionHasError(fnType, p.Pattern.ErrorName, p.Pattern.ErrorType))
 			patches = append(patches, patch{pos: fnBody.Pos(), stmts: ps})
 		}
 
@@ -183,22 +175,14 @@ func (p *TraceProcessor) process(fset *token.FileSet, file *ast.File) error {
 	return nil
 }
 
-func NewSerialTraceProcessor(contextName, contextPackage, contextType, errorName, errorType string) *SerialTraceProcessor {
+func NewSerialTraceProcessor(pattern TracePattern) *SerialTraceProcessor {
 	return &SerialTraceProcessor{
-		ContextName:    contextName,
-		ContextPackage: contextPackage,
-		ContextType:    contextType,
-		ErrorName:      errorName,
-		ErrorType:      errorType,
+		Pattern: pattern,
 	}
 }
 
 type SerialTraceProcessor struct {
-	ContextName    string
-	ContextPackage string
-	ContextType    string
-	ErrorName      string
-	ErrorType      string
+	Pattern TracePattern
 }
 
 func (p *SerialTraceProcessor) Process(fileNames []string, config ...any) error {
@@ -207,7 +191,7 @@ func (p *SerialTraceProcessor) Process(fileNames []string, config ...any) error 
 		return ErrInvalidConfigType
 	}
 
-	fp := NewTraceProcessor(p.ContextName, p.ContextPackage, p.ContextType, p.ErrorName, p.ErrorType)
+	fp := NewTraceProcessor(p.Pattern)
 	for _, fileName := range fileNames {
 		err := fp.Process(fileName, conf)
 		if err != nil {
@@ -217,13 +201,13 @@ func (p *SerialTraceProcessor) Process(fileNames []string, config ...any) error 
 	return nil
 }
 
-func NewParallelTraceProcessor(worker int, contextName, contextPackage, contextType, errorName, errorType string) *ParallelTraceProcessor {
+func NewParallelTraceProcessor(worker int, pattern TracePattern) *ParallelTraceProcessor {
 	taskCh := make(chan Task)
 	doneCh := make(chan bool)
 
 	for i := 0; i < worker; i++ {
 		go func() {
-			p := NewTraceProcessor(contextName, contextPackage, contextType, errorName, errorType)
+			p := NewTraceProcessor(pattern)
 			for {
 				select {
 				case task := <-taskCh:
@@ -236,25 +220,17 @@ func NewParallelTraceProcessor(worker int, contextName, contextPackage, contextT
 	}
 
 	return &ParallelTraceProcessor{
-		Worker:         worker,
-		ContextName:    contextName,
-		ContextPackage: contextPackage,
-		ContextType:    contextType,
-		ErrorName:      errorName,
-		ErrorType:      errorType,
-		TaskCh:         taskCh,
+		Worker:  worker,
+		Pattern: pattern,
+		TaskCh:  taskCh,
 	}
 }
 
 type ParallelTraceProcessor struct {
-	Worker         int
-	ContextName    string
-	ContextPackage string
-	ContextType    string
-	ErrorName      string
-	ErrorType      string
-	TaskCh         chan Task
-	DoneCh         chan bool
+	Worker  int
+	Pattern TracePattern
+	TaskCh  chan Task
+	DoneCh  chan bool
 }
 
 func (p *ParallelTraceProcessor) Process(fileNames []string, config ...any) error {

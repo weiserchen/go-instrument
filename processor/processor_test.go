@@ -19,8 +19,8 @@ const (
 func BenchmarkTraceProcessor(b *testing.B) {
 	tempDir := setupFiles(b, BenchSerailCount)
 
-	pattern := fmt.Sprintf("%s/*.go", tempDir)
-	filenames, err := filepath.Glob(pattern)
+	filePattern := fmt.Sprintf("%s/*.go", tempDir)
+	filenames, err := filepath.Glob(filePattern)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -31,7 +31,14 @@ func BenchmarkTraceProcessor(b *testing.B) {
 	}()
 
 	b.ResetTimer()
-	p := NewTraceProcessor("ctx", "context", "Context", "err", "error")
+	tracePattern := TracePattern{
+		ContextName:    "ctx",
+		ContextPackage: "context",
+		ContextType:    "Context",
+		ErrorName:      "err",
+		ErrorType:      "error",
+	}
+	p := NewTraceProcessor(tracePattern)
 	for i := 0; i < b.N; i++ {
 		for _, fname := range filenames {
 			err := p.Process(fname, "test", false, true, false)
@@ -42,35 +49,11 @@ func BenchmarkTraceProcessor(b *testing.B) {
 	}
 }
 
-// func BenchmarkSerialProcessor(b *testing.B) {
-// 	tempDir := setupFiles(b, BenchParallelCount)
-
-// 	pattern := fmt.Sprintf("%s/*.go", tempDir)
-// 	filenames, err := filepath.Glob(pattern)
-// 	if err != nil {
-// 		b.Fatal(err)
-// 	}
-
-// 	defaultOut = io.Discard
-// 	defer func() {
-// 		defaultOut = os.Stdout
-// 	}()
-
-// 	b.ResetTimer()
-// 	p := NewSerialProcessor("ctx", "context", "Context", "err", "error")
-// 	for i := 0; i < b.N; i++ {
-// 		err := p.Process(filenames, "test", false, true, false)
-// 		if err != nil {
-// 			b.Error(err)
-// 		}
-// 	}
-// }
-
-func BenchmarkParallelProcessor(b *testing.B) {
+func BenchmarkSerialProcessor(b *testing.B) {
 	tempDir := setupFiles(b, BenchParallelCount)
 
-	pattern := fmt.Sprintf("%s/*.go", tempDir)
-	filenames, err := filepath.Glob(pattern)
+	filePattern := fmt.Sprintf("%s/*.go", tempDir)
+	filenames, err := filepath.Glob(filePattern)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -81,7 +64,45 @@ func BenchmarkParallelProcessor(b *testing.B) {
 	}()
 
 	b.ResetTimer()
-	p := NewParallelTraceProcessor(BenchParallelWorker, "ctx", "context", "Context", "err", "error")
+	tracePattern := TracePattern{
+		ContextName:    "ctx",
+		ContextPackage: "context",
+		ContextType:    "Context",
+		ErrorName:      "err",
+		ErrorType:      "error",
+	}
+	p := NewSerialTraceProcessor(tracePattern)
+	for i := 0; i < b.N; i++ {
+		err := p.Process(filenames, "test", false, true, false)
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func BenchmarkParallelProcessor(b *testing.B) {
+	tempDir := setupFiles(b, BenchParallelCount)
+
+	filePattern := fmt.Sprintf("%s/*.go", tempDir)
+	filenames, err := filepath.Glob(filePattern)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defaultOut = io.Discard
+	defer func() {
+		defaultOut = os.Stdout
+	}()
+
+	b.ResetTimer()
+	tracePattern := TracePattern{
+		ContextName:    "ctx",
+		ContextPackage: "context",
+		ContextType:    "Context",
+		ErrorName:      "err",
+		ErrorType:      "error",
+	}
+	p := NewParallelTraceProcessor(BenchParallelWorker, tracePattern)
 	for i := 0; i < b.N; i++ {
 		err := p.Process(filenames, "test", false, true, false)
 		if err != nil {

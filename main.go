@@ -22,7 +22,14 @@ func main() {
 	flag.BoolVar(&skipGenerated, "skip-generated", false, "skip generated files")
 	flag.Parse()
 
-	p := processor.NewTraceProcessor("ctx", "context", "Context", "err", "error")
+	pattern := processor.TracePattern{
+		ContextName:    "ctx",
+		ContextPackage: "context",
+		ContextType:    "Context",
+		ErrorName:      "err",
+		ErrorType:      "error",
+	}
+	p := processor.NewTraceProcessor(pattern)
 	config := processor.TraceConfig{
 		App:           app,
 		Overwrite:     overwrite,
