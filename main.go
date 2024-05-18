@@ -22,7 +22,7 @@ func main() {
 	flag.BoolVar(&skipGenerated, "skip-generated", false, "skip generated files")
 	flag.Parse()
 
-	p := processor.NewSerialProcessor("ctx", "context", "Context", "err", "error")
+	p := processor.NewFileProcessor("ctx", "context", "Context", "err", "error")
 
 	if err := p.Process(fileName, app, overwrite, defaultSelect, skipGenerated); err != nil {
 		os.Stderr.WriteString(err.Error())
