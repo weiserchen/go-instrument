@@ -19,7 +19,7 @@ func FuzzBadFile(f *testing.F) {
 			fname := path.Join(t.TempDir(), "fuzz-test-file.go")
 			os.WriteFile(fname, []byte(orig), 0644)
 
-			cmd := exec.Command(testbin, "-app", "app", "-w", "-filename", fname)
+			cmd := exec.Command(testbin, "--app", "app", "-w", fname)
 			cmd.Env = append(cmd.Environ(), "GOCOVERDIR=./coverage")
 			if err := cmd.Run(); err == nil {
 				t.Fatal(err)
@@ -34,7 +34,7 @@ func TestApp(t *testing.T) {
 
 	t.Run("when basic, then ok", func(t *testing.T) {
 		f := copyFile(t, "./internal/testdata/basic.go")
-		cmd := exec.Command(testbin, "-app", "app", "-w", "-filename", f)
+		cmd := exec.Command(testbin, "--app", "app", "-w", f)
 		cmd.Env = append(cmd.Environ(), "GOCOVERDIR=./coverage")
 		if err := cmd.Run(); err != nil {
 			t.Errorf(err.Error())
@@ -44,7 +44,7 @@ func TestApp(t *testing.T) {
 
 	t.Run("when include only, then ok", func(t *testing.T) {
 		f := copyFile(t, "./internal/testdata/basic_include_only.go")
-		cmd := exec.Command(testbin, "-app", "app", "-w", "-all=false", "-filename", f)
+		cmd := exec.Command(testbin, "--app", "app", "-w", "--default-select=false", f)
 		cmd.Env = append(cmd.Environ(), "GOCOVERDIR=./coverage")
 		if err := cmd.Run(); err != nil {
 			t.Errorf(err.Error())
@@ -53,7 +53,7 @@ func TestApp(t *testing.T) {
 	})
 
 	t.Run("when generated file, then err", func(t *testing.T) {
-		cmd := exec.Command(testbin, "-app", "app", "-w", "-skip-generated=true", "-filename", "./internal/testdata/skipped_generated.go")
+		cmd := exec.Command(testbin, "--app", "app", "-w", "--skip-generated=true", "./internal/testdata/skipped_generated.go")
 		cmd.Env = append(cmd.Environ(), "GOCOVERDIR=./coverage")
 		out, err := cmd.CombinedOutput()
 		if err == nil {
@@ -65,7 +65,7 @@ func TestApp(t *testing.T) {
 	})
 
 	t.Run("when cannot open file, then err", func(t *testing.T) {
-		cmd := exec.Command(testbin, "-filename", "asdf")
+		cmd := exec.Command(testbin, "asdf")
 		cmd.Env = append(cmd.Environ(), "GOCOVERDIR=./coverage")
 		if err := cmd.Run(); err == nil {
 			t.Errorf("expected exit code 1")
@@ -73,7 +73,7 @@ func TestApp(t *testing.T) {
 	})
 
 	t.Run("when non go file, then err", func(t *testing.T) {
-		cmd := exec.Command(testbin, "-filename", "README.md")
+		cmd := exec.Command(testbin, "README.md")
 		cmd.Env = append(cmd.Environ(), "GOCOVERDIR=./coverage")
 		if err := cmd.Run(); err == nil {
 			t.Errorf("expected exit code 1")
@@ -89,7 +89,7 @@ func TestApp(t *testing.T) {
 	})
 
 	t.Run("when can not parse commands, then err", func(t *testing.T) {
-		cmd := exec.Command(testbin, "-app", "app", "-w", "-all=false", "-filename", "./internal/testdata/error_unkonwn_command.go")
+		cmd := exec.Command(testbin, "--app", "app", "-w", "--default-select=false", "./internal/testdata/error_unkonwn_command.go")
 		cmd.Env = append(cmd.Environ(), "GOCOVERDIR=./coverage")
 		if err := cmd.Run(); err == nil {
 			t.Errorf("expected exit code 1")

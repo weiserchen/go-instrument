@@ -23,8 +23,12 @@ package cmd
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/nikolaydubina/go-instrument/processor"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,17 +37,32 @@ var cfgFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "instra",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Use:   "go-instrument",
+	Short: "A simple instrumentation tool for tracing application data.",
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		filenames, err := listFileNames(args)
+		if err != nil {
+			return err
+		}
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+		tracePattern := processor.DefaultTracePattern
+		config := processor.TraceConfig{
+			App:           viper.GetString("app"),
+			Overwrite:     viper.GetBool("overwrite"),
+			DefaultSelect: viper.GetBool("default-select"),
+			SkipGenerated: viper.GetBool("skip-generated"),
+		}
+
+		fmt.Println(config)
+
+		p := processor.NewParallelTraceProcessor(viper.GetInt("parallel"), tracePattern)
+		if err := p.Process(filenames, config); err != nil {
+			return err
+		}
+
+		return nil
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -58,15 +77,21 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.go-instrument.yaml)")
+	rootCmd.Flags().IntP("parallel", "j", 1, "The number of parallel worker")
+	rootCmd.Flags().StringP("app", "n", "app", "Application name")
+	rootCmd.Flags().BoolP("overwrite", "w", false, "Overwrite original files")
+	rootCmd.Flags().BoolP("default-select", "s", true, "Instrument all by default")
+	rootCmd.Flags().BoolP("skip-generated", "k", false, "Skip generated files")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	replacer := strings.NewReplacer("-", "_")
+	viper.SetEnvKeyReplacer(replacer)
+	viper.SetEnvPrefix("INSTRA")
+	viper.BindPFlag("parallel", rootCmd.Flags().Lookup("parallel"))
+	viper.BindPFlag("app", rootCmd.Flags().Lookup("app"))
+	viper.BindPFlag("overwrite", rootCmd.Flags().Lookup("overwrite"))
+	viper.BindPFlag("default-select", rootCmd.Flags().Lookup("default-select"))
+	viper.BindPFlag("skip-generated", rootCmd.Flags().Lookup("skip-generated"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -91,4 +116,34 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 	}
+}
+
+func listFileNames(args []string) ([]string, error) {
+	var filenames []string
+
+	for _, f := range args {
+		fileInfo, err := os.Stat(f)
+		if err != nil {
+			return []string{}, err
+		}
+
+		if fileInfo.IsDir() {
+			err := filepath.WalkDir(f, func(path string, d fs.DirEntry, err error) error {
+				if d.IsDir() {
+					return nil
+				}
+				if filepath.Ext(path) == ".go" {
+					filenames = append(filenames, path)
+				}
+				return nil
+			})
+			if err != nil {
+				return []string{}, err
+			}
+		} else {
+			filenames = append(filenames, f)
+		}
+	}
+
+	return filenames, nil
 }
