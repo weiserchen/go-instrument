@@ -2,6 +2,7 @@ package processor
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -12,10 +13,10 @@ import (
 const (
 	BenchSerailCount    = 1
 	BenchParallelCount  = 10000
-	BenchParallelWorker = 8
+	BenchParallelWorker = 32
 )
 
-func BenchmarkFileProcessor(b *testing.B) {
+func BenchmarkTraceProcessor(b *testing.B) {
 	tempDir := setupFiles(b, BenchSerailCount)
 
 	pattern := fmt.Sprintf("%s/*.go", tempDir)
@@ -24,8 +25,13 @@ func BenchmarkFileProcessor(b *testing.B) {
 		b.Fatal(err)
 	}
 
+	defaultOut = io.Discard
+	defer func() {
+		defaultOut = os.Stdout
+	}()
+
 	b.ResetTimer()
-	p := NewFileProcessor("ctx", "context", "Context", "err", "error")
+	p := NewTraceProcessor("ctx", "context", "Context", "err", "error")
 	for i := 0; i < b.N; i++ {
 		for _, fname := range filenames {
 			err := p.Process(fname, "test", false, true, false)
@@ -36,24 +42,29 @@ func BenchmarkFileProcessor(b *testing.B) {
 	}
 }
 
-func BenchmarkSerialProcessor(b *testing.B) {
-	tempDir := setupFiles(b, BenchParallelCount)
+// func BenchmarkSerialProcessor(b *testing.B) {
+// 	tempDir := setupFiles(b, BenchParallelCount)
 
-	pattern := fmt.Sprintf("%s/*.go", tempDir)
-	filenames, err := filepath.Glob(pattern)
-	if err != nil {
-		b.Fatal(err)
-	}
+// 	pattern := fmt.Sprintf("%s/*.go", tempDir)
+// 	filenames, err := filepath.Glob(pattern)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	b.ResetTimer()
-	p := NewSerialProcessor("ctx", "context", "Context", "err", "error")
-	for i := 0; i < b.N; i++ {
-		err := p.Process(filenames, "test", false, true, false)
-		if err != nil {
-			b.Error(err)
-		}
-	}
-}
+// 	defaultOut = io.Discard
+// 	defer func() {
+// 		defaultOut = os.Stdout
+// 	}()
+
+// 	b.ResetTimer()
+// 	p := NewSerialProcessor("ctx", "context", "Context", "err", "error")
+// 	for i := 0; i < b.N; i++ {
+// 		err := p.Process(filenames, "test", false, true, false)
+// 		if err != nil {
+// 			b.Error(err)
+// 		}
+// 	}
+// }
 
 func BenchmarkParallelProcessor(b *testing.B) {
 	tempDir := setupFiles(b, BenchParallelCount)
@@ -64,8 +75,13 @@ func BenchmarkParallelProcessor(b *testing.B) {
 		b.Fatal(err)
 	}
 
+	defaultOut = io.Discard
+	defer func() {
+		defaultOut = os.Stdout
+	}()
+
 	b.ResetTimer()
-	p := NewParallelProcessor(BenchParallelWorker, "ctx", "context", "Context", "err", "error")
+	p := NewParallelTraceProcessor(BenchParallelWorker, "ctx", "context", "Context", "err", "error")
 	for i := 0; i < b.N; i++ {
 		err := p.Process(filenames, "test", false, true, false)
 		if err != nil {

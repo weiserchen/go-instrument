@@ -15,6 +15,15 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 )
 
+var (
+	// for testing purpose
+	defaultOut io.Writer = os.Stdout
+)
+
+var (
+	ErrInvalidConfigType = errors.New("invalid config type")
+)
+
 // Instrumenter supplies ast of Go code that will be inserted and required dependencies.
 type Instrumenter interface {
 	Imports() []*types.Package
@@ -27,20 +36,17 @@ type FunctionSelector interface {
 }
 
 type Processor interface {
-	Process(fileNames []string, app string, overwrite, defaultSelect, skipGenerated bool) error
+	Process(fileNames []string, config ...any) error
 }
 
-type ProcessorTask struct {
-	FileName      string
-	App           string
-	Overwrite     bool
-	DefaultSelect bool
-	SkipGenerated bool
-	ErrCh         chan error
+type Task struct {
+	FileName string
+	Config   TraceConfig
+	ErrCh    chan error
 }
 
-func NewFileProcessor(contextName, contextPackage, contextType, errorName, errorType string) *FileProcessor {
-	return &FileProcessor{
+func NewTraceProcessor(contextName, contextPackage, contextType, errorName, errorType string) *TraceProcessor {
+	return &TraceProcessor{
 		SpanName:       BasicSpanName,
 		ContextName:    contextName,
 		ContextPackage: contextPackage,
@@ -50,8 +56,8 @@ func NewFileProcessor(contextName, contextPackage, contextType, errorName, error
 	}
 }
 
-// FileProcessor traverses AST, collects details on functions and methods, and invokes Instrumenter
-type FileProcessor struct {
+// TraceProcessor traverses AST, collects details on functions and methods, and invokes Instrumenter
+type TraceProcessor struct {
 	Instrumenter     Instrumenter
 	FunctionSelector FunctionSelector
 	SpanName         func(receiver, function string) string
@@ -62,7 +68,12 @@ type FileProcessor struct {
 	ErrorType        string
 }
 
-func (p *FileProcessor) Process(fileName string, app string, overwrite, defaultSelect, skipGenerated bool) error {
+func (p *TraceProcessor) Process(fileName string, config ...any) error {
+	conf, ok := config[0].(TraceConfig)
+	if !ok {
+		return ErrInvalidConfigType
+	}
+
 	if fileName == "" {
 		return errors.New("missing arg: file name")
 	}
@@ -83,7 +94,7 @@ func (p *FileProcessor) Process(fileName string, app string, overwrite, defaultS
 	if err != nil {
 		return err
 	}
-	if skipGenerated && ast.IsGenerated(file) {
+	if conf.SkipGenerated && ast.IsGenerated(file) {
 		return errors.New("skipping generated file")
 	}
 
@@ -99,10 +110,10 @@ func (p *FileProcessor) Process(fileName string, app string, overwrite, defaultS
 		return err
 	}
 
-	p.FunctionSelector = NewMapFunctionSelectorFromCommands(defaultSelect, commands)
+	p.FunctionSelector = NewMapFunctionSelectorFromCommands(conf.DefaultSelect, commands)
 
 	p.Instrumenter = &instrument.OpenTelemetry{
-		TracerName:  app,
+		TracerName:  conf.App,
 		ContextName: "ctx",
 		ErrorName:   "err",
 	}
@@ -111,8 +122,8 @@ func (p *FileProcessor) Process(fileName string, app string, overwrite, defaultS
 		return err
 	}
 
-	var out io.Writer = io.Discard
-	if overwrite {
+	var out io.Writer = defaultOut
+	if conf.Overwrite {
 		outf, err := os.OpenFile(fileName, os.O_RDWR|os.O_TRUNC, 0)
 		if err != nil {
 			return err
@@ -124,7 +135,7 @@ func (p *FileProcessor) Process(fileName string, app string, overwrite, defaultS
 	return format.Node(out, fset, file)
 }
 
-func (p *FileProcessor) process(fset *token.FileSet, file *ast.File) error {
+func (p *TraceProcessor) process(fset *token.FileSet, file *ast.File) error {
 	var patches []patch
 
 	astutil.Apply(file, nil, func(c *astutil.Cursor) bool {
@@ -172,8 +183,8 @@ func (p *FileProcessor) process(fset *token.FileSet, file *ast.File) error {
 	return nil
 }
 
-func NewSerialProcessor(contextName, contextPackage, contextType, errorName, errorType string) *SerialProcessor {
-	return &SerialProcessor{
+func NewSerialTraceProcessor(contextName, contextPackage, contextType, errorName, errorType string) *SerialTraceProcessor {
+	return &SerialTraceProcessor{
 		ContextName:    contextName,
 		ContextPackage: contextPackage,
 		ContextType:    contextType,
@@ -182,7 +193,7 @@ func NewSerialProcessor(contextName, contextPackage, contextType, errorName, err
 	}
 }
 
-type SerialProcessor struct {
+type SerialTraceProcessor struct {
 	ContextName    string
 	ContextPackage string
 	ContextType    string
@@ -190,10 +201,15 @@ type SerialProcessor struct {
 	ErrorType      string
 }
 
-func (p *SerialProcessor) Process(fileNames []string, app string, overwrite, defaultSelect, skipGenerated bool) error {
-	fp := NewFileProcessor(p.ContextName, p.ContextPackage, p.ContextType, p.ErrorName, p.ErrorType)
+func (p *SerialTraceProcessor) Process(fileNames []string, config ...any) error {
+	conf, ok := config[0].(TraceConfig)
+	if !ok {
+		return ErrInvalidConfigType
+	}
+
+	fp := NewTraceProcessor(p.ContextName, p.ContextPackage, p.ContextType, p.ErrorName, p.ErrorType)
 	for _, fileName := range fileNames {
-		err := fp.Process(fileName, app, overwrite, defaultSelect, skipGenerated)
+		err := fp.Process(fileName, conf)
 		if err != nil {
 			return err
 		}
@@ -201,17 +217,17 @@ func (p *SerialProcessor) Process(fileNames []string, app string, overwrite, def
 	return nil
 }
 
-func NewParallelProcessor(worker int, contextName, contextPackage, contextType, errorName, errorType string) *ParallelProcessor {
-	taskCh := make(chan ProcessorTask)
+func NewParallelTraceProcessor(worker int, contextName, contextPackage, contextType, errorName, errorType string) *ParallelTraceProcessor {
+	taskCh := make(chan Task)
 	doneCh := make(chan bool)
 
 	for i := 0; i < worker; i++ {
 		go func() {
-			p := NewFileProcessor(contextName, contextPackage, contextType, errorName, errorType)
+			p := NewTraceProcessor(contextName, contextPackage, contextType, errorName, errorType)
 			for {
 				select {
 				case task := <-taskCh:
-					task.ErrCh <- p.Process(task.FileName, task.App, task.Overwrite, task.DefaultSelect, task.SkipGenerated)
+					task.ErrCh <- p.Process(task.FileName, task.Config)
 				case <-doneCh:
 					return
 				}
@@ -219,7 +235,7 @@ func NewParallelProcessor(worker int, contextName, contextPackage, contextType, 
 		}()
 	}
 
-	return &ParallelProcessor{
+	return &ParallelTraceProcessor{
 		Worker:         worker,
 		ContextName:    contextName,
 		ContextPackage: contextPackage,
@@ -230,31 +246,33 @@ func NewParallelProcessor(worker int, contextName, contextPackage, contextType, 
 	}
 }
 
-type ParallelProcessor struct {
+type ParallelTraceProcessor struct {
 	Worker         int
 	ContextName    string
 	ContextPackage string
 	ContextType    string
 	ErrorName      string
 	ErrorType      string
-	TaskCh         chan ProcessorTask
+	TaskCh         chan Task
 	DoneCh         chan bool
 }
 
-func (p *ParallelProcessor) Process(fileNames []string, app string, overwrite, defaultSelect, skipGenerated bool) error {
+func (p *ParallelTraceProcessor) Process(fileNames []string, config ...any) error {
+	conf, ok := config[0].(TraceConfig)
+	if !ok {
+		return ErrInvalidConfigType
+	}
+
 	run := func() error {
 		var g errgroup.Group
 
 		for _, fileName := range fileNames {
 			g.Go(func() error {
 				errCh := make(chan error)
-				task := ProcessorTask{
-					FileName:      fileName,
-					App:           app,
-					Overwrite:     overwrite,
-					DefaultSelect: defaultSelect,
-					SkipGenerated: skipGenerated,
-					ErrCh:         errCh,
+				task := Task{
+					FileName: fileName,
+					Config:   conf,
+					ErrCh:    errCh,
 				}
 
 				p.TaskCh <- task
@@ -268,121 +286,4 @@ func (p *ParallelProcessor) Process(fileNames []string, app string, overwrite, d
 	}
 
 	return run()
-}
-
-// BasicSpanName is common notation of <class>.<method> or <pkg>.<func>
-func BasicSpanName(receiver, function string) string {
-	if receiver == "" {
-		return function
-	}
-	return receiver + "." + function
-}
-
-func methodReceiverTypeName(fn *ast.FuncDecl) string {
-	// function
-	if fn == nil || fn.Recv == nil {
-		return ""
-	}
-	// method
-	for _, v := range fn.Recv.List {
-		if v == nil {
-			continue
-		}
-		t := v.Type
-		// pointer receiver
-		if v, ok := v.Type.(*ast.StarExpr); ok {
-			t = v.X
-		}
-		// value/pointer receiver
-		if v, ok := t.(*ast.Ident); ok {
-			return v.Name
-		}
-	}
-	return ""
-}
-
-func functionName(fn *ast.FuncDecl) string {
-	if fn == nil || fn.Name == nil {
-		return ""
-	}
-	return fn.Name.Name
-}
-
-func isContext(e *ast.Field, contextName, contextPackage, contextType string) bool {
-	// anonymous arg
-	// multiple symbols
-	// strange symbol
-	if e == nil || len(e.Names) != 1 || e.Names[0] == nil {
-		return false
-	}
-	if e.Names[0].Name != contextName {
-		return false
-	}
-
-	pkg := ""
-	sym := ""
-
-	if se, ok := e.Type.(*ast.SelectorExpr); ok && se != nil {
-		if v, ok := se.X.(*ast.Ident); ok && v != nil {
-			pkg = v.Name
-		}
-		if v := se.Sel; v != nil {
-			sym = v.Name
-		}
-	}
-
-	return pkg == contextPackage && sym == contextType
-}
-
-func isError(e *ast.Field, errorName, errorType string) bool {
-	if e == nil {
-		return false
-	}
-	// anonymous arg
-	// multiple symbols
-	// strange symbol
-	if len(e.Names) != 1 || e.Names[0] == nil {
-		return false
-	}
-	if e.Names[0].Name != errorName {
-		return false
-	}
-
-	if v, ok := e.Type.(*ast.Ident); ok && v != nil {
-		return v.Name == errorType
-	}
-
-	return false
-}
-
-func functionHasContext(fnType *ast.FuncType, contextName, contextPackage, contextType string) bool {
-	if fnType == nil {
-		return false
-	}
-
-	if ps := fnType.Params; ps != nil {
-		for _, q := range ps.List {
-			if isContext(q, contextName, contextPackage, contextType) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func functionHasError(fnType *ast.FuncType, errorName, errorType string) bool {
-	if fnType == nil {
-		return false
-	}
-
-	if rs := fnType.Results; rs != nil {
-		for _, q := range rs.List {
-			if isError(q, errorName, errorType) {
-				return true
-			}
-		}
-	}
-
-	return false
 }

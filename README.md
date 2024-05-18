@@ -46,6 +46,14 @@ func (s Cat) Name(ctx context.Context) (name string, err error) {
 Example HTTP server [go-instrument-example](https://github.com/nikolaydubina/go-instrument-example) as it appears in Datadog.
 ![](./docs/fib-error.png)
 
+## Requirements
+```bash
+go get golang.org/x/perf/cmd/benchstat
+go install golang.org/x/perf/cmd/benchstat
+
+make bench
+```
+
 ## Features
 
 ### Excluding and Including

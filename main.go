@@ -22,9 +22,15 @@ func main() {
 	flag.BoolVar(&skipGenerated, "skip-generated", false, "skip generated files")
 	flag.Parse()
 
-	p := processor.NewFileProcessor("ctx", "context", "Context", "err", "error")
+	p := processor.NewTraceProcessor("ctx", "context", "Context", "err", "error")
+	config := processor.TraceConfig{
+		App:           app,
+		Overwrite:     overwrite,
+		DefaultSelect: defaultSelect,
+		SkipGenerated: skipGenerated,
+	}
 
-	if err := p.Process(fileName, app, overwrite, defaultSelect, skipGenerated); err != nil {
+	if err := p.Process(fileName, config); err != nil {
 		os.Stderr.WriteString(err.Error())
 		os.Exit(1)
 	}
