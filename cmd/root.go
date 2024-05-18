@@ -37,7 +37,7 @@ var cfgFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "go-instrument",
+	Use:   "go-instrument <path>...",
 	Short: "A simple instrumentation tool for tracing application data.",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -15,14 +15,6 @@ This tool uses standard Go library to modify AST with instrumentation. You can a
 * 500 LOC
 * OpenTelemetry (Datadog, NewRelic, etc.)
 
-```bash
-go install github.com/nikolaydubina/go-instrument@latest
-```
-
-```bash
-find . -name "*.go" | xargs -I{} go-instrument -app my-service -w -filename {}
-```
-
 Functions and methods with `ctx context.Context` in arguments
 ```go
 func (s Cat) Name(ctx context.Context) (name string, err error) {
@@ -47,11 +39,61 @@ Example HTTP server [go-instrument-example](https://github.com/nikolaydubina/go-
 ![](./docs/fib-error.png)
 
 ## Requirements
-```bash
-go get golang.org/x/perf/cmd/benchstat
-go install golang.org/x/perf/cmd/benchstat
 
-make bench
+- Install this tool.
+
+```bash
+go install github.com/nikolaydubina/go-instrument@latest
+```
+
+- Install the benchmarking tool.
+
+```bash
+go install golang.org/x/perf/cmd/benchstat
+```
+
+## Usage
+
+```bash
+A simple instrumentation tool for tracing application data.
+
+Usage:
+  go-instrument <path>... [flags]
+
+Flags:
+  -n, --app string       Application name (default "app")
+      --config string    config file (default is $HOME/.go-instrument.yaml)
+  -s, --default-select   Instrument all by default (default true)
+  -h, --help             help for go-instrument
+  -w, --overwrite        Overwrite original files
+  -j, --parallel int     The number of parallel worker (default 1)
+  -k, --skip-generated   Skip generated files
+```
+
+### Example
+
+```bash
+go-instrument --app test -j 4 --skip-generated ./internal/testdata/basic.go ./internal/testdata/walk
+```
+
+#### Testing
+
+```bash
+make test
+```
+
+#### Benchmarking
+
+```bash
+make benchmark
+```
+
+Result (8 workers):
+
+```bash
+TraceProcessor-12            1.434m ± 2%
+SerialTraceProcessor-12       15.29 ± 2%
+ParallelTraceProcessor-12     3.008 ± 8%
 ```
 
 ## Features

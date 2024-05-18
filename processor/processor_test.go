@@ -44,7 +44,7 @@ func BenchmarkTraceProcessor(b *testing.B) {
 	}
 }
 
-func BenchmarkSerialProcessor(b *testing.B) {
+func BenchmarkSerialTraceProcessor(b *testing.B) {
 	tempDir := setupFiles(b, BenchParallelCount)
 
 	filePattern := fmt.Sprintf("%s/*.go", tempDir)
@@ -70,7 +70,7 @@ func BenchmarkSerialProcessor(b *testing.B) {
 	}
 }
 
-func BenchmarkParallelProcessor(b *testing.B) {
+func BenchmarkParallelTraceProcessor(b *testing.B) {
 	tempDir := setupFiles(b, BenchParallelCount)
 
 	filePattern := fmt.Sprintf("%s/*.go", tempDir)
